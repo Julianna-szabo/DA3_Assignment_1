@@ -26,7 +26,8 @@ options(digits = 3)
 
 # Import raw data
 
-data = read.csv('data/clean/airbnb_florence_workfile_adj.csv')
+data_url ="https://raw.githubusercontent.com/Julianna-szabo/DA3_Assignment_1/main/data/clean/airbnb_florence_workfile_adj.csv"
+data = read.csv(data_url)
 
 # First look at data
 
