@@ -34,27 +34,9 @@ View(data %>%
        count(property_type))
 
 data <- data %>%
-  filter(property_type %in% c("Entire apartment", "Entire condominium", "Entire loft",
-  "Private room in apartment", "Private room in house", "Private room in condominium",
-  "Shared room in apartment", "Entire house", "Tiny house", "Entire villa"))
+  filter(property_type %in% c("Entire apartment", "Entire condominium", "Entire loft"))
 
-# Making them rooms
-
-for (i in 1:length(data$property_type)) {
-  if (data$property_type[i] == "Private room in apartment") {
-    data$property_type[i] <- "Room"
-  } else if (data$property_type[i] == "Private room in condominium") {
-    data$property_type[i] <- "Room"
-  } else if (data$property_type[i] == "Private room in house") {
-    data$property_type[i] <- "Room"
-  } else if (data$property_type[i] == "Shared room in apartment") {
-    data$property_type[i] <- "Room"
-  } else  {
-    data$property_type[i] <- data$property_type[i]
-  }
-}
-
-# Makring them apartments
+# Making them apartments
 
 for (i in 1:length(data$property_type)) {
   if (data$property_type[i] == "Entire apartment") {
@@ -68,23 +50,6 @@ for (i in 1:length(data$property_type)) {
   }
 }
 
-# Making them houses
-
-for (i in 1:length(data$property_type)) {
-  if (data$property_type[i] == "Entire house") {
-    data$property_type[i] <- "House"
-  } else if  (data$property_type[i] == "Entire villa") {
-    data$property_type[i] <- "House"
-  } else if (data$property_type[i] == "Tiny house") {
-    data$property_type[i] <- "House"
-  } else  {
-    data$property_type[i] <- data$property_type[i]
-  }
-}
-
-data$f_property_type <- as.factor(data$property_type)
-
-
 #Room type as factor
 data %>% 
   group_by(room_type) %>% 
@@ -93,12 +58,9 @@ data %>%
 data <- data %>%
   mutate(f_room_type = factor(room_type))
 
-data$f_room_type <- factor(ifelse(data$f_room_type== "Entire home/apt", "House/Apt",
+data$f_room_type <- factor(ifelse(data$f_room_type== "Entire home/apt", "Apt",
                                    ifelse(data$f_room_type== "Private room", "Private",
                                           ifelse(data$f_room_type== "Shared room", "Shared","."))))
-
-
-
 
 # Make Neighbourhood cleansed as Factor
 data <- data %>%
@@ -253,8 +215,6 @@ data <- data %>%
     f_parking_on_vs_off_premises = factor(parking_on_vs_off_premises))
 
 
-
-
 # Numeric variables -------------------------------------------------------
 
 ## Create Numerical variables
@@ -262,6 +222,11 @@ data <- data %>%
   mutate(
     euro_price_day = price,
     p_host_response_rate = as.numeric(host_response_rate))
+
+# Filter for apartments that can accommodate 2-6 people
+
+data <- data %>% 
+  filter(accommodates %in% (2:6))
 
 # add new numeric columns from certain columns
 numericals <- c("accommodates","bedrooms", "bathrooms","review_scores_rating","number_of_reviews",
@@ -349,12 +314,6 @@ R_F14_h_price <- ggplot(data, aes(price)) +
   xlab("Price") +
   theme_bg()
 R_F14_h_price
-ggsave(paste0(output, "R_F14_h_price.png"), width=mywidth_small, height=myheight_small, units = "cm", dpi = 1200)
-cairo_ps(filename = paste0(output, "R_F14_h_price.eps"),
-         width = mywidth_small, height = myheight_small, pointsize = 12,
-         fallback_resolution = 1200)
-print(R_F14_h_price)
-dev.off()
 
 R_F14_h_lnprice <- ggplot(data, aes(ln_price)) +
   geom_histogram(binwidth = 0.15, fill = color[1], color = color.outline, alpha = 0.8, size = 0.25) +
@@ -362,12 +321,6 @@ R_F14_h_lnprice <- ggplot(data, aes(ln_price)) +
   xlab("Log price") +
   theme_bg()
 R_F14_h_lnprice
-ggsave(paste0(output, "R_F14_h_lnprice.png"), width=mywidth_small, height=myheight_small, units = "cm", dpi = 1200)
-cairo_ps(filename = paste0(output, "R_F14_h_lnprice.eps"),
-         width = mywidth_small, height = myheight_small, pointsize = 8,
-         fallback_resolution = 1200)
-print(R_F14_h_lnprice)
-dev.off()
 
 
 ################################################
@@ -388,12 +341,6 @@ R_14_s_n_accommodates <- ggplot(data = data, aes(x=n_accommodates, y=price)) +
   geom_smooth(method="lm", colour=color[1], se=FALSE)+
   theme_bg()
 R_14_s_n_accommodates
-ggsave(paste0(output, "R_14_s_n_accommodates.png"), width=mywidth_small, height=myheight_small, units = "cm", dpi = 1200)
-cairo_ps(filename = paste0(output, "R_14_s_n_accommodates.eps"),
-         width = mywidth_small, height = myheight_small, pointsize = 12,
-         fallback_resolution = 1200)
-print(R_14_s_n_accommodates)
-dev.off()
 
 
 # Squares and further values to create
@@ -544,7 +491,7 @@ lm(ln_price ~ f_minimum_nights,data=data)
 ## look at categoricals  ## 
 ###########################
 
-categoricals <- c("f_property_type", "f_room_type", "f_neighbourhood_cleansed", "f_parking_free_vs_paid",
+categoricals <- c("f_room_type", "f_neighbourhood_cleansed", "f_parking_free_vs_paid",
                   "f_parking_type", "f_parking_on_vs_off_premises")
 
 for (i in 1:length(categoricals)) {

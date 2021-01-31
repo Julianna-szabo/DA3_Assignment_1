@@ -131,7 +131,7 @@ g3a <- ggplot(data=datau, aes(x=price)) +
   scale_x_continuous(expand = c(0.00,0.00),limits=c(0,400), breaks = seq(0,400, 50)) +
   theme_bg() 
 g3a
-save_fig("ch14-figure-3a-airbnb-price", output, "small")
+
 
 # lnprice
 g3b<- ggplot(data=datau, aes(x=ln_price)) +
@@ -144,7 +144,7 @@ g3b<- ggplot(data=datau, aes(x=ln_price)) +
   labs(x = "ln(price, US dollars)",y = "Percent")+
   theme_bg() 
 g3b
-save_fig("ch14-figure-3b-airbnb-lnprice", output, "small")
+
 
 ## Boxplot of price by room type
 g4 <- ggplot(data = datau, aes(x = f_room_type, y = price)) +
@@ -157,7 +157,7 @@ g4 <- ggplot(data = datau, aes(x = f_room_type, y = price)) +
   labs(x = "Room type",y = "Price (US dollars)")+
   theme_bg()
 g4
-save_fig("ch14-figure-4a-airbnb-room", output, "small")
+
 
 # Boxplot
 g5 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
@@ -169,7 +169,7 @@ g5 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
   theme_bg() +
   theme(legend.position = c(0.3,0.8)        )
 g5
-save_fig("ch14-figure4b-airbnb-accom", output, "small")
+
 
 ########################################
 # PART II.
@@ -181,11 +181,11 @@ save_fig("ch14-figure4b-airbnb-accom", output, "small")
 #####################
 
 # Basic Variables
-basic_lev  <- c("n_accommodates", "n_beds", "f_property_type", "f_room_type", 
+basic_lev  <- c("n_accommodates","n_bedrooms", "n_beds", "f_property_type", "f_room_type", 
                 "n_days_since", "flag_days_since","f_parking_free_vs_paid", "f_neighbourhood_cleansed")
 
 # Factorized variables
-basic_add <- c("f_bathroom","f_bed_type", "f_parking_on_vs_off_premises", "f_parking_type")
+basic_add <- c("f_bathroom", "f_parking_on_vs_off_premises", "f_parking_type")
 reviews <- c("f_number_of_reviews","n_review_scores_rating", "flag_review_scores_rating")
 # Higher orders
 poly_lev <- c("n_accommodates2", "n_days_since2", "n_days_since3")
@@ -212,8 +212,7 @@ p6 <- price_diff_by_variables2(data, "f_property_type", "d_gym", "Property type"
 
 g_interactions <- plot_grid(p1, p2, p3, p4, p5, p6, nrow=3, ncol=2)
 g_interactions
-#save_fig("ch14_airbnb_interactions",output,"verylarge")
-save_fig("ch14-figure-5-airbnb-interactions",output,"verylarge")
+
 
 # dummies suggested by graphs
 X1  <- c("f_room_type*f_property_type")
@@ -271,8 +270,7 @@ set.seed(20180124)
 folds_i <- sample(rep(1:n_folds, length.out = nrow(data_work) ))
 # Create results
 model_results_cv <- list()
-
-
+ 
 for (i in (1:8)){
   model_name <-  paste0("modellev",i)
   model_pretty_name <- paste0("(",i,")")
@@ -302,9 +300,9 @@ for (i in (1:8)){
     prediction_train <- predict(model, newdata = data_train)
     prediction_test <- predict(model, newdata = data_test)
     
-    # Criteria evaluation ### DOESN'T WORK!!!!!
-    rmse_train[k] <- mse_lev(prediction_train, data_train[,yvar] %>% pull)**(1/2)
-    rmse_test[k] <- mse_lev(prediction_test, data_test[,yvar] %>% pull)**(1/2)
+    # Criteria evaluation
+    rmse_train[k] <- mse_lev(prediction_train, data_train$price)**(1/2)
+    rmse_test[k] <- mse_lev(prediction_test, data_train$price)**(1/2)
     
   }
   
@@ -312,6 +310,7 @@ for (i in (1:8)){
                                          rmse_train = rmse_train,rmse_test = rmse_test,BIC = BIC,
                                          model_name = model_pretty_name, nvars = nvars, r2 = r2)
 }
+
 
 model <- lm(formula,data = data_train)
 prediction_train <- predict(model, newdata = data_train)
@@ -327,19 +326,203 @@ t1 <- imap(model_results_cv,  ~{
 }) %>%
   bind_rows()
 t1
-column_names <- c("Model", "N predictors", "R-squared", "BIC", "Training RMSE",
-                  "Test RMSE")
 
-# Nice table produced and saved as .tex without \beign{table}
-# -R2, BIC on full work data-n.
-# -In sample rmse: average on training data; avg test : average on test data
+# RMSE training vs test graph
+t1_levels <- t1 %>%
+  dplyr::select("nvars", "rmse_train", "rmse_test") %>%
+  gather(var,value, rmse_train:rmse_test) %>%
+  mutate(nvars2=nvars+1) %>%
+  mutate(var = factor(var, levels = c("rmse_train", "rmse_test"),
+                      labels = c("RMSE Training","RMSE Test")))
 
-t14_2 <- t1 %>%
-  select("model_pretty_name", "nvars", "r2" , "BIC", "rmse_train", "rmse_test")
-colnames(t14_2) <- column_names
-print(xtable(t14_2, type = "latex", digits=c(0,0,0,2,0,2,2)), file = paste0(output, "ch14_table_fit_level.tex"),
-      include.rownames=FALSE, booktabs=TRUE, floating = FALSE)
+model_result_plot_levels <- ggplot(data = t1_levels,
+                                   aes(x = factor(nvars2), y = value, color=factor(var), group = var)) +
+  geom_line(size=1,show.legend=FALSE, na.rm = TRUE) +
+  scale_color_manual(name="",
+                     values=c(color[2],color[1])) +
+  scale_x_discrete( name = "Number of coefficients", expand=c(0.01, 0.01)) +
+  geom_dl(aes(label = var),  method = list("last.points", dl.trans(x=x-1), cex=0.4)) +
+  #scale_colour_discrete(guide = 'none') +
+  theme_bg()
+model_result_plot_levels
 
+
+#################################
+#           LASSO               #
+#################################
+
+# take model 8 (and find observations where there is no missing data)may
+vars_model_7 <- c("price", basic_lev,basic_add,reviews,poly_lev,X1,X2,amenities)
+vars_model_8 <- c("price", basic_lev,basic_add,reviews,poly_lev,X1,X2,amenities,X3)
+
+# Set lasso tuning parameters
+train_control <- trainControl(method = "cv", number = n_folds)
+tune_grid <- expand.grid("alpha" = c(1), "lambda" = seq(0.05, 1, by = 0.05))
+
+# We use model 7 without the interactions so that it is easy to compare later to post lasso ols
+formula <- formula(paste0("price ~ ", paste(setdiff(vars_model_8, "price"), collapse = " + ")))
+
+set.seed(1234)
+lasso_model <- caret::train(formula,
+                            data = data_work,
+                            method = "glmnet",
+                            preProcess = c("center", "scale"),
+                            trControl = train_control,
+                            tuneGrid = tune_grid,
+                            na.action=na.exclude)
+
+print(lasso_model$bestTune$lambda)
+
+lasso_coeffs <- coef(lasso_model$finalModel, lasso_model$bestTune$lambda) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "variable") %>%
+  rename(coefficient = `1`)  # the column has a name "1", to be renamed
+
+print(lasso_coeffs)
+
+lasso_coeffs_nz<-lasso_coeffs %>%
+  filter(coefficient!=0)
+print(nrow(lasso_coeffs_nz))
+
+lasso_coeffs_nz %>%
+  arrange()
+
+# Evaluate model. CV error:
+lasso_cv_rmse <- lasso_model$results %>%
+  filter(lambda == lasso_model$bestTune$lambda) %>%
+  dplyr::select(RMSE)
+print(lasso_cv_rmse[1, 1])
+
+
+########################################
+# PART III.
+########################################
+
+
+
+###################################################
+# Diagnsotics #
+###################################################
+
+model7_level <- model_results_cv[["modellev7"]][["model_work_data"]]
+
+
+# look at holdout RMSE
+model7_level_work_rmse <- mse_lev(predict(model7_level, newdata = data_work), data_work$price)**(1/2)
+model7_level_holdout_rmse <- mse_lev(predict(model7_level, newdata = data_holdout), data_holdout$price)**(1/2)
+model7_level_holdout_rmse
+
+###################################################
+# FIGURES FOR FITTED VS ACTUAL OUTCOME VARIABLES #
+###################################################
+
+# Target variable
+Ylev <- data_holdout[["price"]]
+
+meanY <-mean(Ylev)
+sdY <- sd(Ylev)
+meanY_m2SE <- meanY -1.96 * sdY
+meanY_p2SE <- meanY + 1.96 * sdY
+Y5p <- quantile(Ylev, 0.05, na.rm=TRUE)
+Y95p <- quantile(Ylev, 0.95, na.rm=TRUE)
+
+# Predicted values
+predictionlev_holdout_pred <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="predict")) %>%
+  rename(pred_lwr = lwr, pred_upr = upr)
+predictionlev_holdout_conf <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="confidence")) %>%
+  rename(conf_lwr = lwr, conf_upr = upr)
+
+predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
+                               predictionlev_holdout_pred,
+                               predictionlev_holdout_conf[,c("conf_lwr","conf_upr")])
+
+predictionlev_holdout
+
+# Create data frame with the real and predicted values
+d <- data.frame(ylev=Ylev, predlev=predictionlev_holdout[,"fit"] )
+# Check the differences
+d$elev <- d$ylev - d$predlev
+
+# Plot predicted vs price
+level_vs_pred <- ggplot(data = d) +
+  geom_point(aes(y=ylev, x=predlev), color = color[1], size = 1,
+             shape = 16, alpha = 0.7, show.legend=FALSE, na.rm=TRUE) +
+  #geom_smooth(aes(y=ylev, x=predlev), method="lm", color=color[2], se=F, size=0.8, na.rm=T)+
+  geom_segment(aes(x = 0, y = 0, xend = 350, yend =350), size=0.5, color=color[2], linetype=2) +
+  coord_cartesian(xlim = c(0, 350), ylim = c(0, 350)) +
+  scale_x_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
+  scale_y_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
+  labs(y = "Price (US dollars)", x = "Predicted price  (US dollars)") +
+  theme_bg() 
+level_vs_pred
+
+# Redo predicted values at 80% PI
+predictionlev_holdout_pred <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="predict", level=0.8)) %>%
+  rename(pred_lwr = lwr, pred_upr = upr)
+predictionlev_holdout_conf <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="confidence", level=0.8)) %>%
+  rename(conf_lwr = lwr, conf_upr = upr)
+
+predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
+                               predictionlev_holdout_pred,
+                               predictionlev_holdout_conf[,c("conf_lwr","conf_upr")])
+
+summary(predictionlev_holdout_pred)
+
+predictionlev_holdout_summary <-
+  predictionlev_holdout %>%
+  group_by(n_accommodates) %>%
+  dplyr::summarise(fit = mean(fit, na.rm=TRUE), pred_lwr = mean(pred_lwr, na.rm=TRUE), pred_upr = mean(pred_upr, na.rm=TRUE),
+                   conf_lwr = mean(conf_lwr, na.rm=TRUE), conf_upr = mean(conf_upr, na.rm=TRUE))
+
+kable(x = predictionlev_holdout_summary, format = "latex", booktabs=TRUE,  digits = 3, row.names = FALSE,
+      linesep = "", col.names = c("Accomodates","Prediction","Pred. interval lower",
+                                  "Pred. interval upper","Conf.interval lower","Conf.interval upper")) %>%
+  cat(.,file= paste0(output, "modellev7_holdout_summary.tex"))
+
+
+F14_CI_n_accomodate <- ggplot(predictionlev_holdout_summary, aes(x=factor(n_accommodates))) +
+  geom_bar(aes(y = fit ), stat="identity",  fill = color[1], alpha=0.7 ) +
+  geom_errorbar(aes(ymin=pred_lwr, ymax=pred_upr, color = "Pred. interval"),width=.2) +
+  #geom_errorbar(aes(ymin=conf_lwr, ymax=conf_upr, color = "Conf. interval"),width=.2) +
+  scale_y_continuous(name = "Predicted price (US dollars)") +
+  scale_x_discrete(name = "Accomodates (Persons)") +
+  scale_color_manual(values=c(color[2], color[2])) +
+  theme_bg() +
+  theme(legend.title= element_blank(),legend.position="none")
+F14_CI_n_accomodate
+
+
+#NOT USED
+# Density chart (not in book)
+g3 <- ggplot(data = datau, aes(x=price)) +
+  geom_density(aes(color=f_room_type, fill=f_room_type),  na.rm =TRUE, alpha= 0.3) +
+  labs(x="Price (US dollars)", y="Density", color = "") +
+  scale_color_manual(name="",
+                     values=c(color[2],color[1], color[3]),
+                     labels=c("Entire home/apt","Private room", "Shared room")) +
+  scale_fill_manual(name="",
+                    values=c(color[2],color[1], color[3]),
+                    labels=c("Entire home/apt","Private room", "Shared room")) +
+  theme_bg() 
+theme(legend.position = c(0.7,0.7),
+      legend.direction = "horizontal",
+      legend.background = element_blank(),
+      legend.box.background = element_rect(color = "white"))
+g3
+
+
+# Barchart  (not in book)
+plot4 <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_room_type, fill = f_room_type)) +
+  geom_bar(alpha=0.8, na.rm=T, width = 0.8) +
+  scale_color_manual(name="",
+                     values=c(color[2],color[1], color[3])) +
+  scale_fill_manual(name="",
+                    values=c(color[2],color[1],  color[3])) +
+  labs(x = "Accomodates (Persons)",y = "Frequency")+
+  theme_bg() 
+theme(legend.position = "bottom")
+plot4
 
 
 

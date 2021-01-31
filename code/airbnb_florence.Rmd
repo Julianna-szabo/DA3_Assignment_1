@@ -1,0 +1,47 @@
+---
+title: "Florence AirBnb pricing"
+author: "Julianna Szabo"
+date: "1/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+There seems to be an abundance of AirBnbs in Florence so it is important to stand out. First, the distribution of apartments by the number of people who can stay there.
+
+```{r}
+
+```
+
+
+For AirBnb prices in Florence there seem to be many important factors to consider when setting a price. Through thorough analysis, some of which will be explained in this repornt, it as been determined that there are over 50 factors contributing to the price dynamics. Some of the most influencial are as expected:  
+* Property type
+* Number of bedrooms
+* Number of people it fits
+* Room type  
+Some interesting factors that seem to be important are:
+* Availability of a dishwasher
+* Possibility for luggage drop off
+* Number of reviews recieved
+* Availability of an elevator  
+Some factors that were expected to be important, but turned to be insignificant are:
+* If pets are allowed in the space
+* If the appartment has a balcony
+* Availability of a rooftop
+* Availability of a safe
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
