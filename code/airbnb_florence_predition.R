@@ -131,7 +131,6 @@ g3a <- ggplot(data=datau, aes(x=price)) +
   theme_bg() 
 g3a
 
-
 # lnprice
 g3b<- ggplot(data=datau, aes(x=ln_price)) +
   geom_histogram_da(type="percent", binwidth = 0.2) +
@@ -141,6 +140,7 @@ g3b<- ggplot(data=datau, aes(x=ln_price)) +
   labs(x = "ln(price, Euros)",y = "Percent")+
   theme_bg() 
 g3b
+
 
 # Boxplot
 g4 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
@@ -164,8 +164,8 @@ g4
 #####################
 
 # Basic Variables
-basic_lev  <- c("n_accommodates","n_bedrooms", "n_beds", "f_property_type", "f_room_type", 
-                "n_days_since", "flag_days_since","f_parking_free_vs_paid", "f_neighbourhood_cleansed")
+basic_lev  <- c("n_accommodates","n_bedrooms", "n_beds", "n_days_since", "flag_days_since",
+                "f_parking_free_vs_paid", "f_neighbourhood_cleansed")
 
 # Factorized variables
 basic_add <- c("f_bathroom", "f_parking_on_vs_off_premises", "f_parking_type")
@@ -184,25 +184,26 @@ amenities <-  grep("^d_.*", names(data), value = TRUE)
 ################################################
 
 #Look up room type interactions
-p1 <- price_diff_by_variables2(data, "f_room_type", "d_gardenorbackyard", "Room type", "Garden or backyard")
-p2 <- price_diff_by_variables2(data, "f_room_type", "d_luggagedropoffallowed", "Room type", "Luggage drop off")
-#Look up parking
-p3 <- price_diff_by_variables2(data, "f_parking_free_vs_paid", "d_luggagedropoffallowed", "Parking", "Luggage drop off")
-p4 <- price_diff_by_variables2(data, "f_parking_free_vs_paid", "d_suitableforevents", "Parking", "Suitable for events")
+p1 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_gardenorbackyard", "Neighbourhood", "Garden or backyard")
+p2 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_luggagedropoffallowed", "Neighbourhood", "Luggage drop off")
 #Look up property type
-p5 <- price_diff_by_variables2(data, "f_property_type", "d_petsallowed", "Property type", "Pets allowed")
-p6 <- price_diff_by_variables2(data, "f_property_type", "d_gym", "Property type", "Elevator")
+p3 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_petsallowed", "Neighbourhood", "Pets allowed")
+p4 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_elevator",  "Neighbourhood", "Elevator")
+#Look up parking
+p5 <- price_diff_by_variables2(data, "f_parking_free_vs_paid", "d_luggagedropoffallowed", "Parking", "Luggage drop off")
+p6 <- price_diff_by_variables2(data, "f_parking_free_vs_paid", "d_suitableforevents", "Parking", "Suitable for events")
 
 g_interactions <- plot_grid(p1, p2, p3, p4, p5, p6, nrow=3, ncol=2)
 g_interactions
 
 
 # dummies suggested by graphs
-X1  <- c("f_room_type*f_property_type")
+X1  <- c("f_neighbourhood_cleansed*d_gardenorbackyard", "f_neighbourhood_cleansed*d_petsallowed",
+         "f_neighbourhood_cleansed*d_elevator")
 
 # Additional interactions of factors and dummies
-X2  <- c("d_airconditioning*f_property_type", "d_petsallowed*f_property_type", "d_gym*f_property_type")
-X3  <- c(paste0("(f_property_type + f_room_type + f_parking_free_vs_paid) * (",
+X2  <- c("d_airconditioning*f_neighbourhood_cleansed", "d_gym*f_neighbourhood_cleansed")
+X3  <- c(paste0("(f_neighbourhood_cleansed + f_parking_free_vs_paid) * (",
                 paste(amenities, collapse=" + "),")"))
 
 
@@ -329,14 +330,13 @@ model_result_plot_levels <- ggplot(data = t1_levels,
   theme_bg()
 model_result_plot_levels
 
-model7 <- lm(paste0("price", modellev7), data = data)
-model7[["coefficients"]]
+# Model 8 is best in terms of RMSE, but model 5 is best in terms of  BIC
 
 #################################
 #           LASSO               #
 #################################
 
-# take model 8 (and find observations where there is no missing data)may
+# take model 8 (and find observations where there is no missing data)
 vars_model_7 <- c("price", basic_lev,basic_add,reviews,poly_lev,X1,X2,amenities)
 vars_model_8 <- c("price", basic_lev,basic_add,reviews,poly_lev,X1,X2,amenities,X3)
 
@@ -362,7 +362,7 @@ lasso_coeffs <- coef(lasso_model$finalModel, lasso_model$bestTune$lambda) %>%
   as.matrix() %>%
   as.data.frame() %>%
   rownames_to_column(var = "variable") %>%
-  rename(coefficient = `1`)  # the column has a name "1", to be renamed
+  rename(coefficient = `1`)
 
 print(lasso_coeffs)
 
@@ -383,18 +383,24 @@ print(lasso_cv_rmse[1, 1])
 ########################################
 
 
-
 ###################################################
 # Diagnsotics #
 ###################################################
-
-model7_level <- model_results_cv[["modellev7"]][["model_work_data"]]
-
+model5_level <- model_results_cv[["modellev5"]][["model_work_data"]]
+model8_level <- model_results_cv[["modellev8"]][["model_work_data"]]
 
 # look at holdout RMSE
-model7_level_work_rmse <- mse_lev(predict(model7_level, newdata = data_work), data_work$price)**(1/2)
-model7_level_holdout_rmse <- mse_lev(predict(model7_level, newdata = data_holdout), data_holdout$price)**(1/2)
-model7_level_holdout_rmse
+model5_level_work_rmse <- mse_lev(predict(model5_level, newdata = data_work), data_work$price)**(1/2)
+model5_level_holdout_rmse <- mse_lev(predict(model5_level, newdata = data_holdout), data_holdout$price)**(1/2)
+model5_level_holdout_rmse
+
+# look at holdout RMSE
+model8_level_work_rmse <- mse_lev(predict(model8_level, newdata = data_work), data_work$price)**(1/2)
+model8_level_holdout_rmse <- mse_lev(predict(model8_level, newdata = data_holdout), data_holdout$price)**(1/2)
+model8_level_holdout_rmse
+
+# The difference between the two is minimal but Model 5 performs slightly better on the holdout set.
+# Further it is simpler and therefore easier to use and explain.
 
 ###################################################
 # FIGURES FOR FITTED VS ACTUAL OUTCOME VARIABLES #
@@ -411,9 +417,9 @@ Y5p <- quantile(Ylev, 0.05, na.rm=TRUE)
 Y95p <- quantile(Ylev, 0.95, na.rm=TRUE)
 
 # Predicted values
-predictionlev_holdout_pred <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="predict")) %>%
+predictionlev_holdout_pred <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="predict")) %>%
   rename(pred_lwr = lwr, pred_upr = upr)
-predictionlev_holdout_conf <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="confidence")) %>%
+predictionlev_holdout_conf <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="confidence")) %>%
   rename(conf_lwr = lwr, conf_upr = upr)
 
 predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
@@ -441,9 +447,9 @@ level_vs_pred <- ggplot(data = d) +
 level_vs_pred
 
 # Redo predicted values at 80% PI
-predictionlev_holdout_pred <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="predict", level=0.8)) %>%
+predictionlev_holdout_pred <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="predict", level=0.8)) %>%
   rename(pred_lwr = lwr, pred_upr = upr)
-predictionlev_holdout_conf <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="confidence", level=0.8)) %>%
+predictionlev_holdout_conf <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="confidence", level=0.8)) %>%
   rename(conf_lwr = lwr, conf_upr = upr)
 
 predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
@@ -496,16 +502,16 @@ g3
 
 
 # Barchart  (not in book)
-plot4 <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_room_type, fill = f_room_type)) +
+plot_dist <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_neighbourhood_cleansed, fill = f_neighbourhood_cleansed)) +
   geom_bar(alpha=0.8, na.rm=T, width = 0.8) +
   scale_color_manual(name="",
-                     values=c(color[2],color[1], color[3])) +
+                     values=c(color[2],color[1], color[3], color[4], color[5])) +
   scale_fill_manual(name="",
-                    values=c(color[2],color[1],  color[3])) +
+                    values=c(color[2],color[1],  color[3], color[4], color[5])) +
   labs(x = "Accomodates (Persons)",y = "Frequency")+
-  theme_bg() 
-theme(legend.position = "bottom")
-plot4
+  theme_bg() +
+  theme(legend.position = "top")
+plot_dist
 
 
 
