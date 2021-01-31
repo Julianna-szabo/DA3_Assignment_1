@@ -37,7 +37,7 @@ skim(data)
 # Some statistics
 
 data %>%
-  group_by(f_property_type, f_room_type) %>%
+  group_by(n_accommodates) %>%
   dplyr::summarize(mean_price = mean(price, na.rm=TRUE))
 
 Hmisc::describe(data$price)
@@ -53,9 +53,6 @@ to_filter[to_filter > 0]
 # 1. drop if no target (already did)
 data <- data %>%
   drop_na(price)
-
-data <- data %>%
-  drop_na(f_parking_type)
 
 # 2. imput when few, not that important
 data <- data %>%
@@ -91,6 +88,14 @@ data <- data %>%
   )
 table(data$flag_days_since)
 
+#5, Add category Unknown
+
+data <- data %>% 
+  mutate(
+    f_parking_type = ifelse(is.na(f_parking_type), "Unknown", f_parking_type),
+    parking_type = ifelse(is.na(parking_type), "Unknown", parking_type)
+  )
+
 # Look at data
 summary(data$price)
 
@@ -102,11 +107,8 @@ to_filter[to_filter > 0]
 # Business logic- define our prediction problem
 ###################################
 
-# Decision
-# Size, we need a normal apartment, 1-7persons
-data <- data %>%
-  filter(n_accommodates < 8
-  )
+# We will be using only apartments that can accommodate 2-6 people since that is what we are
+# trying to price.
 
 # that's gonna be our sample
 skimr::skim(data)
@@ -123,10 +125,7 @@ datau <- subset(data, price<400)
 # price
 g3a <- ggplot(data=datau, aes(x=price)) +
   geom_histogram_da(type="percent", binwidth = 10) +
-  #geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = 10, boundary=0,
-  #               color = color.outline, fill = color[1], size = 0.25, alpha = 0.8,  show.legend=F,  na.rm=TRUE) +
-  #  coord_cartesian(xlim = c(0, 400)) +
-  labs(x = "Price (US dollars)",y = "Percent")+
+  labs(x = "Price (Euros)",y = "Percent")+
   scale_y_continuous(expand = c(0.00,0.00),limits=c(0, 0.15), breaks = seq(0, 0.15, by = 0.03), labels = scales::percent_format(1)) +
   scale_x_continuous(expand = c(0.00,0.00),limits=c(0,400), breaks = seq(0,400, 50)) +
   theme_bg() 
@@ -136,39 +135,23 @@ g3a
 # lnprice
 g3b<- ggplot(data=datau, aes(x=ln_price)) +
   geom_histogram_da(type="percent", binwidth = 0.2) +
-  #  geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = 0.18,
-  #               color = color.outline, fill = color[1], size = 0.25, alpha = 0.8,  show.legend=F,  na.rm=TRUE) +
   coord_cartesian(xlim = c(2.5, 6.5)) +
   scale_y_continuous(expand = c(0.00,0.00),limits=c(0, 0.15), breaks = seq(0, 0.15, by = 0.05), labels = scales::percent_format(5L)) +
   scale_x_continuous(expand = c(0.00,0.01),breaks = seq(2.4,6.6, 0.6)) +
-  labs(x = "ln(price, US dollars)",y = "Percent")+
+  labs(x = "ln(price, Euros)",y = "Percent")+
   theme_bg() 
 g3b
 
-
-## Boxplot of price by room type
-g4 <- ggplot(data = datau, aes(x = f_room_type, y = price)) +
-  stat_boxplot(aes(group = f_room_type), geom = "errorbar", width = 0.3,
-               color = c(color[2],color[1], color[3]), size = 0.5, na.rm=T)+
-  geom_boxplot(aes(group = f_room_type),
-               color = c(color[2],color[1], color[3]), fill = c(color[2],color[1], color[3]),
-               size = 0.5, width = 0.6, alpha = 0.3, na.rm=T, outlier.shape = NA) +
-  scale_y_continuous(expand = c(0.01,0.01),limits = c(0,300), breaks = seq(0,300,100)) +
-  labs(x = "Room type",y = "Price (US dollars)")+
-  theme_bg()
-g4
-
-
 # Boxplot
-g5 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
-                        fill = factor(f_property_type), color=factor(f_property_type))) +
+g4 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
+                        fill = factor(f_neighbourhood_cleansed), color=factor(f_neighbourhood_cleansed))) +
   geom_boxplot(alpha=0.8, na.rm=T, outlier.shape = NA, width = 0.8) +
   stat_boxplot(geom = "errorbar", width = 0.8, size = 0.3, na.rm=T)+
   labs(x = "Accomodates (Persons)",y = "Price (US dollars)")+
   scale_y_continuous(expand = c(0.01,0.01), limits=c(0, 400), breaks = seq(0,400, 50))+
   theme_bg() +
   theme(legend.position = c(0.3,0.8)        )
-g5
+g4
 
 
 ########################################
@@ -346,6 +329,8 @@ model_result_plot_levels <- ggplot(data = t1_levels,
   theme_bg()
 model_result_plot_levels
 
+model7 <- lm(paste0("price", modellev7), data = data)
+model7[["coefficients"]]
 
 #################################
 #           LASSO               #
@@ -385,8 +370,6 @@ lasso_coeffs_nz<-lasso_coeffs %>%
   filter(coefficient!=0)
 print(nrow(lasso_coeffs_nz))
 
-lasso_coeffs_nz %>%
-  arrange()
 
 # Evaluate model. CV error:
 lasso_cv_rmse <- lasso_model$results %>%
