@@ -55,12 +55,14 @@ data %>%
   group_by(room_type) %>% 
   count(room_type)
 
+if (data$room_type== "Entire home/apt") {
+  data$room_type <- "Apt"
+}
+
 data <- data %>%
   mutate(f_room_type = factor(room_type))
 
-data$f_room_type <- factor(ifelse(data$f_room_type== "Entire home/apt", "Apt",
-                                   ifelse(data$f_room_type== "Private room", "Private",
-                                          ifelse(data$f_room_type== "Shared room", "Shared","."))))
+# This column is no longer relevant, because we care about one type of room type
 
 # Make Neighbourhood cleansed as Factor
 data <- data %>%
@@ -491,7 +493,7 @@ lm(ln_price ~ f_minimum_nights,data=data)
 ## look at categoricals  ## 
 ###########################
 
-categoricals <- c("f_room_type", "f_neighbourhood_cleansed", "f_parking_free_vs_paid",
+categoricals <- c("f_neighbourhood_cleansed", "f_parking_free_vs_paid",
                   "f_parking_type", "f_parking_on_vs_off_premises")
 
 for (i in 1:length(categoricals)) {
