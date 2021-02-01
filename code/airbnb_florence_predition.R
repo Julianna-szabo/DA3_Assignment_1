@@ -12,6 +12,8 @@ library(xtable)
 library(directlabels)
 library(knitr)
 library(cowplot)
+library(caret)
+library(rpart.plot)
 
 # set data dir, load theme and functions
 source("/Users/Terez/OneDrive - Central European University/Data_Analysis_03/da_case_studies/ch00-tech-prep/theme_bg.R")
@@ -330,7 +332,7 @@ model_result_plot_levels <- ggplot(data = t1_levels,
   theme_bg()
 model_result_plot_levels
 
-# Model 8 is best in terms of RMSE, but model 5 is best in terms of  BIC
+# Model 1 is best in terms of RMSE, but model 5 is best in terms of  BIC
 
 #################################
 #           LASSO               #
@@ -387,7 +389,7 @@ print(lasso_cv_rmse[1, 1])
 # Diagnsotics #
 ###################################################
 model5_level <- model_results_cv[["modellev5"]][["model_work_data"]]
-model8_level <- model_results_cv[["modellev8"]][["model_work_data"]]
+model1_level <- model_results_cv[["modellev1"]][["model_work_data"]]
 
 # look at holdout RMSE
 model5_level_work_rmse <- mse_lev(predict(model5_level, newdata = data_work), data_work$price)**(1/2)
@@ -395,9 +397,18 @@ model5_level_holdout_rmse <- mse_lev(predict(model5_level, newdata = data_holdou
 model5_level_holdout_rmse
 
 # look at holdout RMSE
-model8_level_work_rmse <- mse_lev(predict(model8_level, newdata = data_work), data_work$price)**(1/2)
-model8_level_holdout_rmse <- mse_lev(predict(model8_level, newdata = data_holdout), data_holdout$price)**(1/2)
-model8_level_holdout_rmse
+model1_level_work_rmse <- mse_lev(predict(model1_level, newdata = data_work), data_work$price)**(1/2)
+model1_level_holdout_rmse <- mse_lev(predict(model1_level, newdata = data_holdout), data_holdout$price)**(1/2)
+model1_level_holdout_rmse
+
+rmse_compare <- add_row(lasso_cv_rmse[1, 1], model1_level_holdout_rmse, model5_level_holdout_rmse)
+
+tab_rmse <- data.frame(
+  "Model" = c("CART1", "CART2","CART3","OLS"),
+  "Describe" = c("2 term. nodes", "4 term. nodes","5 term. nodes","1 variable only"),
+  "RMSE" = c(rmse_cart1, rmse_cart2, rmse_cart3, rmse_linreg1)
+)
+
 
 # The difference between the two is minimal but Model 5 performs slightly better on the holdout set.
 # Further it is simpler and therefore easier to use and explain.
@@ -514,4 +525,150 @@ plot_dist <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_neig
 plot_dist
 
 
+###################################################
+#                       CART                      #
+###################################################
+
+# CART model with two slipts
+# Formula
+model1 <- formula(price ~ n_accommodates)
+
+cart1 <- train(
+  model1, data = data_train, method = "rpart2",
+  trControl = trainControl(method="none"),
+  tuneGrid= data.frame(maxdepth=5))
+
+summary(cart1)
+pred_cart1 <- predict(cart1, data_test)
+rmse_cart1 <- sqrt(mean((pred_cart1 - data_test$price)^2))
+
+rpart.plot(cart1$finalModel, tweak=1.2, digits=-1, extra=1)
+
+# CART with an rport default
+
+cart2 <- train(
+  model1, data = data_train, method = "rpart",
+  trControl = trainControl(method="none"),
+  tuneGrid= expand.grid(cp = 0.01))
+
+summary(cart2)
+pred_cart2 <- predict(cart2, data_test)
+rmse_cart2 <- sqrt(mean((pred_cart2 - data_test$price)^2))
+
+# Tree graph
+rpart.plot(cart2$finalModel, tweak=1.2, digits=-1, extra=1)
+
+# Since there are only a few factors in this variable there is not many splits that can happen.
+
+# CART with multiple factors
+
+# Design models
+yvar <- "price"
+model5 <- formula(formula(paste0(yvar,modellev5)))
+model7 <- formula(formula(paste0(yvar,modellev7)))
+model8 <- formula(formula(paste0(yvar,modellev8)))
+
+# Tree model based on model 5
+cart3 <- train(
+  model5, data=data_train, method = "rpart2",
+  trControl = trainControl(method="none"),
+  tuneGrid= data.frame(maxdepth=4),
+  na.action = na.pass)
+
+summary(cart3)
+pred_cart3 <- predict(cart3, data_test, na.action = na.pass)
+rmse_cart3 <- sqrt(mean((pred_cart3 - data_test$price)^2))
+# Tree graph
+rpart.plot(cart3$finalModel, tweak=1.2, digits=-1, extra=1)
+
+
+# Tree model based on model 8
+cart4 <- train(
+  model8, data=data_train, method = "rpart2",
+  trControl = trainControl(method="none"),
+  tuneGrid= data.frame(maxdepth=10),
+  na.action = na.pass)
+
+summary(cart4)
+pred_cart4 <- predict(cart4, data_test, na.action = na.pass)
+rmse_cart4 <- sqrt(mean((pred_cart4 - data_test$price)^2))
+# Tree graph
+rpart.plot(cart4$finalModel, tweak=1.2, digits=-1, extra=1)
+
+# Try the pruning method - Doesn't work
+
+cart5 <- train(
+  model7, data=data_train, method = "rpart",
+  trControl = trainControl(method="none"),
+  tuneGrid= expand.grid(cp = 0.0001),
+  control = rpart.control(minsplit = 4),
+  na.action = na.pass)
+
+pfit <-prune(cart5$finalModel, cp=0.005 )
+summary(pfit)
+
+# Tree graph
+rpart.plot(pfit, digits=-1, extra=1, tweak=1)
+
+pred_cart5 <- predict(pfit, data_test, na.action = na.pass)
+rmse_cart5 <- sqrt(mean((pred_cart5 - data_test$price)^2))
+rmse_cart5
+
+# Variable importance
+
+cart3_var_imp <- varImp(cart3)$importance
+cart3_var_imp_df <-
+  data.frame(varname = rownames(cart3_var_imp),imp = cart3_var_imp$Overall) %>%
+  mutate(varname = gsub("cond_", "Condition:", varname) ) %>%
+  arrange(desc(imp)) %>%
+  mutate(imp_percentage = imp/sum(imp))
+
+cart3_var_imp_plot <- ggplot(cart3_var_imp_df, aes(x=reorder(varname, imp), y=imp_percentage)) +
+  geom_point(color=color[1], size=2) +
+  geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color=color[1], size=1.5) +
+  ylab("Importance") +
+  xlab("Variable Name") +
+  coord_flip() +
+  scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
+  theme_bg()
+
+cart3_var_imp_plot
+
+###################################################
+#                   Random Forest                 #
+###################################################
+
+# do 5-fold CV
+train_control <- trainControl(method = "cv",
+                              number = 5,
+                              verboseIter = FALSE)
+
+tune_grid <- expand.grid(
+  .mtry = c(5, 7, 9), # number of features to use for the splits
+  .splitrule = "variance", # based on what to make the split (minimize variance)
+  .min.node.size = c(5, 10) # controlling the complexity of individual trees, minumum node size in this case
+)
+
+# simpler model for model A (1)
+set.seed(1234)
+system.time({
+  rf_model_1 <- train(
+    model5,
+    data = data_train,
+    method = "ranger",
+    trControl = train_control,
+    tuneGrid = tune_grid,
+    importance = "impurity"
+  )
+})
+rf_model_1
+
+results <- resamples(
+  list(
+    model_1  = rf_model_1,
+    model_2  = rf_model_2,
+    model_2b = rf_model_2auto
+  )
+)
+summary(results)
 
