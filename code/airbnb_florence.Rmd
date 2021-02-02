@@ -2,10 +2,13 @@
 title: "Florence AirBnb pricing"
 author: "Julianna Szabo"
 date: "1/31/2021"
-output: html_document
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+    highlight: github
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
 # clear environment
@@ -23,6 +26,10 @@ library(directlabels)
 library(knitr)
 library(cowplot)
 library(pander)
+library(caret)
+library(rpart.plot)
+library(ranger)
+library(kableExtra)
 ```
 
 ```{r, include=FALSE, "preparation code", echo=FALSE}
@@ -41,22 +48,6 @@ options(digits = 3)
 
 data_url = "https://raw.githubusercontent.com/Julianna-szabo/DA3_Assignment_1/main/data/clean/airbnb_florence_workfile_adj.csv"
 data = read.csv(data_url)
-
-# First look at data
-
-glimpse(data)
-skim(data)
-
-# Some statistics
-
-data %>%
-  group_by(n_accommodates) %>%
-  dplyr::summarize(mean_price = mean(price, na.rm=TRUE))
-
-Hmisc::describe(data$price)
-
-# Check to see if there are any duplicates
-duplicated(names(data))
 
 # where do we have missing variables now?
 to_filter <- sapply(data, function(x) sum(is.na(x)))
@@ -106,13 +97,6 @@ data <- data %>%
     f_parking_type = ifelse(is.na(f_parking_type), "Unknown", f_parking_type),
     parking_type = ifelse(is.na(parking_type), "Unknown", parking_type)
   )
-
-# Look at data
-summary(data$price)
-
-# where do we have missing variables now?
-to_filter <- sapply(data, function(x) sum(is.na(x)))
-to_filter[to_filter > 0]
 ```
 ```{r, include=FALSE, "business logic", echo=FALSE}
 ###################################
@@ -121,9 +105,6 @@ to_filter[to_filter > 0]
 
 # We will be using only apartments that can accommodate 2-6 people since that is what we are
 # trying to price.
-
-# that's gonna be our sample
-skimr::skim(data)
 
 # NB all graphs, we exclude  extreme values of price
 datau <- subset(data, price<400)
@@ -161,25 +142,25 @@ g4 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
 ```
 
 
-There seems to be an abundance of AirBnbs in Florence so it is important to stand out. First, the distribution of apartments by the number of people who can stay there. The apartment in question can accommodate 2 to 6 people, so that is the range of interest. Further, it would also be nice to see the distribution within Neighbourhoods, since the competition may be more intense in one compared to the other.  
+There seems to be an abundance of AirBnbs in Florence so it is important to stand out. First, it is important to understand the distribution of apartments by the number of people who can stay there. The apartment in question can accommodate 2 to 6 people, so that is the range of interest. Further, it would also be nice to see the distribution within Neighborhoods, since the competition may be more intense in one compared to the other.  
 
 ```{r, echo=FALSE, message=FALSE, error=FALSE, "Distribution graph"}
 plot_dist <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_neighbourhood_cleansed, fill = f_neighbourhood_cleansed)) +
   geom_bar(alpha=0.8, na.rm=T, width = 0.8) +
-  labs(x = "Accomodates (Persons)",y = "Frequency")+
+  labs(x = "Accomodates (Persons)",y = "Frequency", title = "Distribution of apartments by accommodated person")+
   theme_bg() +
   theme(legend.position = "top")
 plot_dist
 ```
 
-As can be seen, most apartments are located in the old town. This is not very surprising since that is the most touristy area of any city. Let us see how that affects the price. The graph focuses on the number of people the apartment can accommodate, while also showing the difference within neighbourhoods.
+As can be seen, most apartments are located in the old town. This is not very surprising since that is the most touristy area of any city. It will be interesting how this may affect the price. The graph below focuses on the price of the apartment based on the number of people it can accommodate, while also showing the difference within neighborhoods.
 
 ```{r, echo=FALSE, "Accommodation Dist"}
 g4 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
                         fill = factor(f_neighbourhood_cleansed), color=factor(f_neighbourhood_cleansed))) +
   geom_boxplot(alpha=0.8, na.rm=T, outlier.shape = NA, width = 0.8) +
   stat_boxplot(geom = "errorbar", width = 0.8, size = 0.3, na.rm=T)+
-  labs(x = "Accomodates (Persons)",y = "Price (US dollars)")+
+  labs(x = "Accomodates (Persons)",y = "Price (Euros)", title = "Distribution of price per accommodated person")+
   scale_y_continuous(expand = c(0.01,0.01), limits=c(0, 400), breaks = seq(0,400, 50))+
   theme_bg() +
   theme(legend.position = c(0.3,0.8)        )
@@ -187,12 +168,11 @@ g4
 ```
 
 
-With the expecting of 3 people appartments, the old town is always the most expensive. Further, it can be seen that this is an important factor since the price does steadily increase with more people able to stay at the apartment. However, it seems that it is not the only factor influencing the price. Therefore, models have been developed that can better explain the change in price.  
+With the expecting of 3 people apartments, the old town is always the most expensive. Further, it can be seen that the number of people it accommodates is an important factor since the price does steadily increase with more people able to stay at the apartment. However, it seems that it is not the only factor influencing the price. Therefore, models have been developed that can better explain the change in price.  
 
-First, there are simple linear models. These examine the correlalation between each x variables and price.  
+First, there are simple linear models. These examine the correlation between each x variables and price.  
 
 ```{r, echo=FALSE, include=FALSE, "Model setup"}
-
 #####################
 # Setting up models #
 #####################
@@ -228,8 +208,6 @@ p5 <- price_diff_by_variables2(data, "f_parking_free_vs_paid", "d_luggagedropoff
 p6 <- price_diff_by_variables2(data, "f_parking_free_vs_paid", "d_suitableforevents", "Parking", "Suitable for events")
 
 g_interactions <- plot_grid(p1, p2, p3, p4, p5, p6, nrow=3, ncol=2)
-g_interactions
-
 
 # dummies suggested by graphs
 X1  <- c("f_neighbourhood_cleansed*d_gardenorbackyard", "f_neighbourhood_cleansed*d_petsallowed",
@@ -359,46 +337,303 @@ model_result_plot_levels <- ggplot(data = t1_levels,
                      values=c(color[2],color[1])) +
   scale_x_discrete( name = "Number of coefficients", expand=c(0.01, 0.01)) +
   geom_dl(aes(label = var),  method = list("last.points", dl.trans(x=x-1), cex=0.4)) +
-  #scale_colour_discrete(guide = 'none') +
-  theme_bg()
+  theme_bg() + 
+  labs(title = "Change of RMSE between models")
 ```
 ```{r, echo=FALSE}
 pander(t1)
 ```
-It is visible that based on RMSE the best model is number 1 with the lowest Root Mean Square Error (RMSE). However, using BIC as the deciding measurement the best model would be number 5. Therefore we will later see which one we wwant to use. The difference between the two both in terms of RMSE and BIC is minimal, however model choice may affect predicted values. 
+It is visible that based on RMSE the best model is number 1 with the lowest Root Mean Square Error (RMSE). However, using BIC as the deciding measurement the best model would be number 5. Therefore we will later see which one we want to use. You can see that the RMSE has been steadily increasing in the train set, but it seems to have gotten closer and closer to overfitting, since the RMSE in the test set keeps going down.
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, "RMSE plot"}
 model_result_plot_levels
 ```
 
-A LASSO model was also created which returned 52 variables as significant. This number is almost double the variables as the simple linear models had. This can be explained by the types of variables picked by LASSO. They were mainly interaction variables, which were not considered in most of the linear models. The LASSO model does outperform all the linear models based on RMSE, since it has an RMSE of 60.8.  
+Two LASSO model was also created which returned 33 and 52 variables respectively as significant. This number is close to the last three more complex linear models ran. This shows that the picked linear model is probably similar to the LASSO models. The LASSO models do outperform all the linear models based on RMSE, since they have an RMSE of 60.7 for both.  
 
-INSERT TABLE WITH RMSE VALUES
 
-Through both the linear models and LASSO, the most important factors influencing price have been discovered.  
+```{r, echo=FALSE, include=FALSE, "LASSO"}
+
+#################################
+#           LASSO               #
+#################################
+
+# take model 8 (and find observations where there is no missing data)
+vars_model_7 <- c("price", basic_lev,basic_add,reviews,poly_lev,X1,X2,amenities)
+vars_model_8 <- c("price", basic_lev,basic_add,reviews,poly_lev,X1,X2,amenities,X3)
+
+# Set lasso tuning parameters
+train_control <- trainControl(method = "cv", number = n_folds)
+tune_grid <- expand.grid("alpha" = c(1), "lambda" = seq(0.05, 1, by = 0.05))
+
+# LASSO using model 7
+formula <- formula(paste0("price ~ ", paste(setdiff(vars_model_7, "price"), collapse = " + ")))
+
+set.seed(1234)
+lasso_model_7 <- caret::train(formula,
+                            data = data_work,
+                            method = "glmnet",
+                            preProcess = c("center", "scale"),
+                            trControl = train_control,
+                            tuneGrid = tune_grid,
+                            na.action=na.exclude)
+
+lasso_coeffs_7 <- coef(lasso_model_7$finalModel, lasso_model_7$bestTune$lambda) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "variable") %>%
+  rename(coefficient = `1`)
+
+lasso_coeffs_nz_7<-lasso_coeffs_7 %>%
+  filter(coefficient!=0)
+
+# Evaluate model. CV error:
+lasso_cv_rmse_7 <- lasso_model_7$results %>%
+  filter(lambda == lasso_model_7$bestTune$lambda) %>%
+  dplyr::select(RMSE)
+
+
+# Lasso using model 8
+formula <- formula(paste0("price ~ ", paste(setdiff(vars_model_7, "price"), collapse = " + ")))
+
+set.seed(1234)
+lasso_model <- caret::train(formula,
+                            data = data_work,
+                            method = "glmnet",
+                            preProcess = c("center", "scale"),
+                            trControl = train_control,
+                            tuneGrid = tune_grid,
+                            na.action=na.exclude)
+
+lasso_coeffs <- coef(lasso_model$finalModel, lasso_model$bestTune$lambda) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "variable") %>%
+  rename(coefficient = `1`)
+
+lasso_coeffs_nz<-lasso_coeffs %>%
+  filter(coefficient!=0)
+
+# Evaluate model. CV error:
+lasso_cv_rmse <- lasso_model$results %>%
+  filter(lambda == lasso_model$bestTune$lambda) %>%
+  dplyr::select(RMSE)
+
+########################################
+# PART III.
+########################################
+
+
+###################################################
+# Diagnsotics #
+###################################################
+model5_level <- model_results_cv[["modellev5"]][["model_work_data"]]
+model1_level <- model_results_cv[["modellev1"]][["model_work_data"]]
+
+# look at holdout RMSE
+model5_level_work_rmse <- mse_lev(predict(model5_level, newdata = data_work), data_work$price)**(1/2)
+model5_level_holdout_rmse <- mse_lev(predict(model5_level, newdata = data_holdout), data_holdout$price)**(1/2)
+model5_level_holdout_rmse
+
+# look at holdout RMSE
+model1_level_work_rmse <- mse_lev(predict(model1_level, newdata = data_work), data_work$price)**(1/2)
+model1_level_holdout_rmse <- mse_lev(predict(model1_level, newdata = data_holdout), data_holdout$price)**(1/2)
+model1_level_holdout_rmse
+
+tab_rmse <- data.frame(
+  "Model" = c("LM1", "LM5","LASSO7", "LASSO8"),
+  "Describe" = c("1 variable", "35 variables","33 variables", "52 variables"),
+  "RMSE" = c(model1_level_holdout_rmse, model5_level_holdout_rmse,lasso_cv_rmse_7[1, 1], lasso_cv_rmse[1, 1])
+)
+```
+```{r, echo=FALSE, "RMSE"}
+pander(tab_rmse)
+```
+
+Another interesting model to look at is a decision tree built by a CART model. This will help predict the price of the apartment based on a few decisions along the way. Unfortunately the RMSE of this model is only 73.9 so it is outperformed by both LM5 and LASSO, but it is helpful to see a different way of deciding.
+
+```{r, include=FALSE, echo=FALSE, "CART", cache=TRUE}
+###################################################
+#                       CART                      #
+###################################################
+
+# Design models
+yvar <- "price"
+model5 <- formula(formula(paste0(yvar,modellev5)))
+model7 <- formula(formula(paste0(yvar,modellev7)))
+model8 <- formula(formula(paste0(yvar,modellev8)))
+
+cart4 <- train(
+  model8, data=data_train, method = "rpart2",
+  trControl = trainControl(method="none"),
+  tuneGrid= data.frame(maxdepth = 5),
+  na.action = na.pass)
+
+pred_cart4 <- predict(cart4, data_test, na.action = na.pass)
+rmse_cart4 <- sqrt(mean((pred_cart4 - data_test$price)^2))
+```
+```{r, echo=FALSE, "Decision tree graph", cache=TRUE}
+rpart.plot(cart4$finalModel, tweak=1.2, digits=-1, extra=1)
+```
+
+Through both the linear models, LASSO as well as CART, the most important factors influencing price have been discovered.  
 
 Some of the most influential are as expected:  
-  * Number of bedrooms  
-  * Number of people it fits  
+  + Number of bedrooms  
+  + Number of people it fits  
+  + Neighborhoods  
 Some interesting factors that seem to be important are:  
-  * Availability of a dishwasher  
-  * Possibility for luggage drop off  
-  * Number of reviews recieved  
-  * Availability of an elevator  
+  + Availability of a dishwasher  
+  + Possibility for luggage drop off  
+  + Number of reviews received  
+  + Availability of an elevator  
 Some factors that were expected to be important, but turned to be insignificant are:  
-  * If pets are allowed in the space  
-  * If the apartment has a balcony  
-  * Availability of a rooftop  
-  * Availability of a safe  
+  + If pets are allowed in the space  
+  + If the apartment has a balcony  
+  + Availability of a hairdryer 
 
-```{r cars}
+To make a last attempt at optimizing the price for the apartment, two Random Forest (RF) has been run on the data. The first one considered only 35 variables and the second all 65 without interactions.
+```{r, echo=FALSE, include=FALSE, "Random Forest", cache=TRUE}
+###################################################
+#                   Random Forest                 #
+###################################################
+
+# do 5-fold CV
+train_control <- trainControl(method = "cv",
+                              number = 5,
+                              verboseIter = FALSE)
+
+tune_grid <- expand.grid(
+  .mtry = c(5, 7, 9), # number of features to use for the splits
+  .splitrule = "variance", # based on what to make the split (minimize variance)
+  .min.node.size = c(5, 10) # controlling the complexity of individual trees, minumum node size in this case
+)
+
+# simpler model for model A (1)
+set.seed(1234)
+system.time({
+  rf_model_1 <- train(
+    model5,
+    data = data_train,
+    method = "ranger",
+    trControl = train_control,
+    tuneGrid = tune_grid,
+    importance = "impurity",
+    na.action = na.omit
+  )
+})
+
+# compley model for model B (2)
+tune_grid <- expand.grid(
+  .mtry = c(8, 10, 12),
+  .splitrule = "variance",
+  .min.node.size = c(5, 10, 15)
+)
+
+set.seed(1234)
+system.time({
+  rf_model_2 <- train(
+    model7,
+    data = data_train,
+    method = "ranger",
+    trControl = train_control,
+    tuneGrid = tune_grid,
+    importance = "impurity",
+    na.action = na.omit
+  )
+})
+```
+```{r, echo=FALSE, "RF errors", cache=TRUE}
+panderOptions("table.split.table", Inf)
+pander(rf_model_1[["results"]], caption = "Random Forest with 35 variables")
+pander(rf_model_2[["results"]], caption = "Random Forest with 65 variables")
 ```
 
-## Including Plots
+These models gave some good results in term RMSE. Since they include many variables to choose from and combining multiple generated models, it gets closer to a true prediction. However, since these are more complex models that are harder to explain. Surprisingly LASSO seems to still be just as good model as the two RF models based on RMSE.
 
-You can also embed plots, for example:
+```{r, echo=FALSE, include=FALSE, "Predictions"}
+###################################################
+# FIGURES FOR FITTED VS ACTUAL OUTCOME VARIABLES #
+###################################################
 
-```{r pressure, echo=FALSE}
+# Target variable
+Ylev <- data_holdout[["price"]]
+
+meanY <-mean(Ylev)
+sdY <- sd(Ylev)
+meanY_m2SE <- meanY -1.96 * sdY
+meanY_p2SE <- meanY + 1.96 * sdY
+Y5p <- quantile(Ylev, 0.05, na.rm=TRUE)
+Y95p <- quantile(Ylev, 0.95, na.rm=TRUE)
+
+# Predicted values
+predictionlev_holdout_pred <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="predict")) %>%
+  rename(pred_lwr = lwr, pred_upr = upr)
+predictionlev_holdout_conf <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="confidence")) %>%
+  rename(conf_lwr = lwr, conf_upr = upr)
+
+predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
+                               predictionlev_holdout_pred,
+                               predictionlev_holdout_conf[,c("conf_lwr","conf_upr")])
+
+predictionlev_holdout
+
+# Create data frame with the real and predicted values
+d <- data.frame(ylev=Ylev, predlev=predictionlev_holdout[,"fit"] )
+# Check the differences
+d$elev <- d$ylev - d$predlev
+
+# Plot predicted vs price
+level_vs_pred <- ggplot(data = d) +
+  geom_point(aes(y=ylev, x=predlev), color = color[1], size = 1,
+             shape = 16, alpha = 0.7, show.legend=FALSE, na.rm=TRUE) +
+  #geom_smooth(aes(y=ylev, x=predlev), method="lm", color=color[2], se=F, size=0.8, na.rm=T)+
+  geom_segment(aes(x = 0, y = 0, xend = 350, yend =350), size=0.5, color=color[2], linetype=2) +
+  coord_cartesian(xlim = c(0, 350), ylim = c(0, 350)) +
+  scale_x_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
+  scale_y_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
+  labs(y = "Price (US dollars)", x = "Predicted price  (US dollars)") +
+  theme_bg() 
+level_vs_pred
+
+# Redo predicted values at 80% PI
+predictionlev_holdout_pred <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="predict", level=0.8)) %>%
+  rename(pred_lwr = lwr, pred_upr = upr)
+predictionlev_holdout_conf <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="confidence", level=0.8)) %>%
+  rename(conf_lwr = lwr, conf_upr = upr)
+
+predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
+                               predictionlev_holdout_pred,
+                               predictionlev_holdout_conf[,c("conf_lwr","conf_upr")])
+
+summary(predictionlev_holdout_pred)
+
+predictionlev_holdout_summary <-
+  predictionlev_holdout %>%
+  group_by(n_accommodates) %>%
+  dplyr::summarise(fit = mean(fit, na.rm=TRUE), pred_lwr = mean(pred_lwr, na.rm=TRUE), pred_upr = mean(pred_upr, na.rm=TRUE),
+                   conf_lwr = mean(conf_lwr, na.rm=TRUE), conf_upr = mean(conf_upr, na.rm=TRUE))
+```
+```{r, echo=FALSE, "Prediction table"}
+panderOptions("table.split.table", Inf)
+pander(x = predictionlev_holdout_summary,  digits = 3, row.names = FALSE,
+      linesep = "", col.names = c("Accomodates","Prediction","Pred. interval lower",
+                                  "Pred. interval upper","Conf.interval lower","Conf.interval upper"))
+```
+```{r, echo=FALSE, "Prediction graph"}
+F14_CI_n_accomodate <- ggplot(predictionlev_holdout_summary, aes(x=factor(n_accommodates))) +
+  geom_bar(aes(y = fit ), stat="identity",  fill = color[1], alpha=0.7 ) +
+  geom_errorbar(aes(ymin=pred_lwr, ymax=pred_upr, color = "Pred. interval"),width=.2) +
+  #geom_errorbar(aes(ymin=conf_lwr, ymax=conf_upr, color = "Conf. interval"),width=.2) +
+  scale_y_continuous(name = "Predicted price (Euros)") +
+  scale_x_discrete(name = "Accomodates (Persons)") +
+  scale_color_manual(values=c(color[2], color[2])) +
+  theme_bg() +
+  theme(legend.title= element_blank(),legend.position="none") +
+  labs(title = "Predicted price per accommodated person")
+F14_CI_n_accomodate
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Overall in terms of price it is better to price the apartment to be advertised as being able to sleep 6 people, since those are more expensive. That way it could achieve a price of aproximately 143 Euros. If it is priced as for only 2 people it would be only 73 Euros. The jump between sleeps 5 and sleeps 6 is almost 30 Euros, so it makes sense to price it with that strategy. That would mean that with an 80% Prediction Interval (PI) the price would be between 64 and 222 Euros, since there is much uncertainly on this market even with a good model.  
+ 
+Comparing the AirBnb market in Florence to a different study conducted in London, it can be seen that the London market is much more prdictable. The models created for that market had a much higher R squared (closer to 0.50 almost 0.60) compared to the r squared achived here in Florence (around 0.20 almost reaching 0.30). This same phenomenin can also be observed in the RMSE and BIC values, which are significantly lower in London than anything achieved in Florence. This could be due to the homogony of the dataset in London since it was only looking at one burough which may be more similar to each other than in the whole city of Florence. 

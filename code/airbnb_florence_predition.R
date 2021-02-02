@@ -14,6 +14,7 @@ library(knitr)
 library(cowplot)
 library(caret)
 library(rpart.plot)
+library(ranger)
 
 # set data dir, load theme and functions
 source("/Users/Terez/OneDrive - Central European University/Data_Analysis_03/da_case_studies/ch00-tech-prep/theme_bg.R")
@@ -117,6 +118,33 @@ skimr::skim(data)
 
 # save workfile
 write.csv(data,"data/clean/airbnb_florence_work.csv", row.names = F)
+
+# Distributions of values
+# Density chart
+g3 <- ggplot(data = datau, aes(x=price)) +
+  geom_density(aes(color=f_room_type, fill=f_room_type),  na.rm =TRUE, alpha= 0.3) +
+  labs(x="Price (US dollars)", y="Density", color = "") +
+  scale_color_manual(name="",
+                     values=c(color[2],color[1], color[3]),
+                     labels=c("Entire home/apt","Private room", "Shared room")) +
+  scale_fill_manual(name="",
+                    values=c(color[2],color[1], color[3]),
+                    labels=c("Entire home/apt","Private room", "Shared room")) +
+  theme_bg() 
+g3
+
+
+# Barchart
+plot_dist <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_neighbourhood_cleansed, fill = f_neighbourhood_cleansed)) +
+  geom_bar(alpha=0.8, na.rm=T, width = 0.8) +
+  scale_color_manual(name="",
+                     values=c(color[2],color[1], color[3], color[4], color[5])) +
+  scale_fill_manual(name="",
+                    values=c(color[2],color[1],  color[3], color[4], color[5])) +
+  labs(x = "Accomodates (Persons)",y = "Frequency")+
+  theme_bg() +
+  theme(legend.position = "top")
+plot_dist
 
 # NB all graphs, we exclude  extreme values of price
 datau <- subset(data, price<400)
@@ -360,6 +388,8 @@ lasso_model <- caret::train(formula,
 
 print(lasso_model$bestTune$lambda)
 
+lasso_final_model <- lasso_model$finalMode
+
 lasso_coeffs <- coef(lasso_model$finalModel, lasso_model$bestTune$lambda) %>%
   as.matrix() %>%
   as.data.frame() %>%
@@ -372,12 +402,47 @@ lasso_coeffs_nz<-lasso_coeffs %>%
   filter(coefficient!=0)
 print(nrow(lasso_coeffs_nz))
 
-
 # Evaluate model. CV error:
-lasso_cv_rmse <- lasso_model$results %>%
+lasso_cv_rmse_8 <- lasso_model$results %>%
   filter(lambda == lasso_model$bestTune$lambda) %>%
   dplyr::select(RMSE)
-print(lasso_cv_rmse[1, 1])
+print(lasso_cv_rmse_8[1, 1])
+
+# Run LASSO using model 7
+
+formula <- formula(paste0("price ~ ", paste(setdiff(vars_model_7, "price"), collapse = " + ")))
+
+set.seed(1234)
+lasso_model_7 <- caret::train(formula,
+                            data = data_work,
+                            method = "glmnet",
+                            preProcess = c("center", "scale"),
+                            trControl = train_control,
+                            tuneGrid = tune_grid,
+                            na.action=na.exclude)
+
+print(lasso_model$bestTune$lambda)
+
+lasso7_final_model <- lasso_model_7$finalMode
+
+lasso_coeffs_7 <- coef(lasso_model_7$finalModel, lasso_model_7$bestTune$lambda) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "variable") %>%
+  rename(coefficient = `1`)
+
+print(lasso_coeffs_7)
+
+lasso_coeffs_nz_7<-lasso_coeffs %>%
+  filter(coefficient!=0)
+print(nrow(lasso_coeffs_nz))
+
+
+# Evaluate model. CV error:
+lasso_cv_rmse_7 <- lasso_model_7$results %>%
+  filter(lambda == lasso_model_7$bestTune$lambda) %>%
+  dplyr::select(RMSE)
+print(lasso_cv_rmse_7[1, 1])
 
 
 ########################################
@@ -401,12 +466,10 @@ model1_level_work_rmse <- mse_lev(predict(model1_level, newdata = data_work), da
 model1_level_holdout_rmse <- mse_lev(predict(model1_level, newdata = data_holdout), data_holdout$price)**(1/2)
 model1_level_holdout_rmse
 
-rmse_compare <- add_row(lasso_cv_rmse[1, 1], model1_level_holdout_rmse, model5_level_holdout_rmse)
-
 tab_rmse <- data.frame(
-  "Model" = c("CART1", "CART2","CART3","OLS"),
-  "Describe" = c("2 term. nodes", "4 term. nodes","5 term. nodes","1 variable only"),
-  "RMSE" = c(rmse_cart1, rmse_cart2, rmse_cart3, rmse_linreg1)
+  "Model" = c("LM1", "LM5","LASSO"),
+  "Describe" = c("1 variable", "35 variables","52 variables"),
+  "RMSE" = c(lasso_cv_rmse[1, 1], model1_level_holdout_rmse, model5_level_holdout_rmse)
 )
 
 
@@ -429,6 +492,19 @@ Y95p <- quantile(Ylev, 0.95, na.rm=TRUE)
 
 # Predicted values
 predictionlev_holdout_pred <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="predict")) %>%
+  rename(pred_lwr = lwr, pred_upr = upr)
+predictionlev_holdout_conf <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="confidence")) %>%
+  rename(conf_lwr = lwr, conf_upr = upr)
+
+predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
+                               predictionlev_holdout_pred,
+                               predictionlev_holdout_conf[,c("conf_lwr","conf_upr")])
+
+predictionlev_holdout
+
+## Try for LASSO
+
+predictionlev_holdout_pred <- as.data.frame(predict(, newdata = data_holdout, interval="predict")) %>%
   rename(pred_lwr = lwr, pred_upr = upr)
 predictionlev_holdout_conf <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="confidence")) %>%
   rename(conf_lwr = lwr, conf_upr = upr)
@@ -478,7 +554,7 @@ predictionlev_holdout_summary <-
 kable(x = predictionlev_holdout_summary, format = "latex", booktabs=TRUE,  digits = 3, row.names = FALSE,
       linesep = "", col.names = c("Accomodates","Prediction","Pred. interval lower",
                                   "Pred. interval upper","Conf.interval lower","Conf.interval upper")) %>%
-  cat(.,file= paste0(output, "modellev7_holdout_summary.tex"))
+  cat(.,file= paste0(output, "modellev5_holdout_summary.tex"))
 
 
 F14_CI_n_accomodate <- ggplot(predictionlev_holdout_summary, aes(x=factor(n_accommodates))) +
@@ -491,38 +567,6 @@ F14_CI_n_accomodate <- ggplot(predictionlev_holdout_summary, aes(x=factor(n_acco
   theme_bg() +
   theme(legend.title= element_blank(),legend.position="none")
 F14_CI_n_accomodate
-
-
-#NOT USED
-# Density chart (not in book)
-g3 <- ggplot(data = datau, aes(x=price)) +
-  geom_density(aes(color=f_room_type, fill=f_room_type),  na.rm =TRUE, alpha= 0.3) +
-  labs(x="Price (US dollars)", y="Density", color = "") +
-  scale_color_manual(name="",
-                     values=c(color[2],color[1], color[3]),
-                     labels=c("Entire home/apt","Private room", "Shared room")) +
-  scale_fill_manual(name="",
-                    values=c(color[2],color[1], color[3]),
-                    labels=c("Entire home/apt","Private room", "Shared room")) +
-  theme_bg() 
-theme(legend.position = c(0.7,0.7),
-      legend.direction = "horizontal",
-      legend.background = element_blank(),
-      legend.box.background = element_rect(color = "white"))
-g3
-
-
-# Barchart  (not in book)
-plot_dist <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_neighbourhood_cleansed, fill = f_neighbourhood_cleansed)) +
-  geom_bar(alpha=0.8, na.rm=T, width = 0.8) +
-  scale_color_manual(name="",
-                     values=c(color[2],color[1], color[3], color[4], color[5])) +
-  scale_fill_manual(name="",
-                    values=c(color[2],color[1],  color[3], color[4], color[5])) +
-  labs(x = "Accomodates (Persons)",y = "Frequency")+
-  theme_bg() +
-  theme(legend.position = "top")
-plot_dist
 
 
 ###################################################
@@ -572,7 +616,7 @@ model8 <- formula(formula(paste0(yvar,modellev8)))
 cart3 <- train(
   model5, data=data_train, method = "rpart2",
   trControl = trainControl(method="none"),
-  tuneGrid= data.frame(maxdepth=4),
+  tuneGrid= data.frame(maxdepth = 5),
   na.action = na.pass)
 
 summary(cart3)
@@ -586,7 +630,7 @@ rpart.plot(cart3$finalModel, tweak=1.2, digits=-1, extra=1)
 cart4 <- train(
   model8, data=data_train, method = "rpart2",
   trControl = trainControl(method="none"),
-  tuneGrid= data.frame(maxdepth=10),
+  tuneGrid= data.frame(maxdepth = 5),
   na.action = na.pass)
 
 summary(cart4)
@@ -658,16 +702,37 @@ system.time({
     method = "ranger",
     trControl = train_control,
     tuneGrid = tune_grid,
-    importance = "impurity"
+    importance = "impurity",
+    na.action = na.omit
   )
 })
 rf_model_1
 
+tune_grid <- expand.grid(
+  .mtry = c(8, 10, 12),
+  .splitrule = "variance",
+  .min.node.size = c(5, 10, 15)
+)
+
+set.seed(1234)
+system.time({
+  rf_model_2 <- train(
+    model7,
+    data = data_train,
+    method = "ranger",
+    trControl = train_control,
+    tuneGrid = tune_grid,
+    importance = "impurity",
+    na.action = na.omit
+  )
+})
+
+rf_model_2
+
 results <- resamples(
   list(
     model_1  = rf_model_1,
-    model_2  = rf_model_2,
-    model_2b = rf_model_2auto
+    model_2  = rf_model_2
   )
 )
 summary(results)
