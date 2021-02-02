@@ -140,7 +140,7 @@ g4 <- ggplot(datau, aes(x = factor(n_accommodates), y = price,
   theme_bg() +
   theme(legend.position = c(0.3,0.8)        )
 ```
-
+# Understanding the data
 
 There seems to be an abundance of AirBnbs in Florence so it is important to stand out. First, it is important to understand the distribution of apartments by the number of people who can stay there. The apartment in question can accommodate 2 to 6 people, so that is the range of interest. Further, it would also be nice to see the distribution within Neighborhoods, since the competition may be more intense in one compared to the other.  
 
@@ -168,7 +168,9 @@ g4
 ```
 
 
-With the expecting of 3 people apartments, the old town is always the most expensive. Further, it can be seen that the number of people it accommodates is an important factor since the price does steadily increase with more people able to stay at the apartment. However, it seems that it is not the only factor influencing the price. Therefore, models have been developed that can better explain the change in price.  
+With the expecting of 3 people apartments, the old town is always the most expensive. Further, it can be seen that the number of people it accommodates is an important factor since the price does steadily increase with more people able to stay at the apartment. However, it seems that it is not the only factor influencing the price. Therefore, models have been developed that can better explain the change in price. 
+
+# Linear Models
 
 First, there are simple linear models. These examine the correlation between each x variables and price.  
 
@@ -340,7 +342,7 @@ model_result_plot_levels <- ggplot(data = t1_levels,
   theme_bg() + 
   labs(title = "Change of RMSE between models")
 ```
-```{r, echo=FALSE}
+```{r, echo=FALSE, "Model comparison"}
 pander(t1)
 ```
 It is visible that based on RMSE the best model is number 1 with the lowest Root Mean Square Error (RMSE). However, using BIC as the deciding measurement the best model would be number 5. Therefore we will later see which one we want to use. You can see that the RMSE has been steadily increasing in the train set, but it seems to have gotten closer and closer to overfitting, since the RMSE in the test set keeps going down.
@@ -349,10 +351,11 @@ It is visible that based on RMSE the best model is number 1 with the lowest Root
 model_result_plot_levels
 ```
 
+# LASSO
+
 Two LASSO model was also created which returned 33 and 52 variables respectively as significant. This number is close to the last three more complex linear models ran. This shows that the picked linear model is probably similar to the LASSO models. The LASSO models do outperform all the linear models based on RMSE, since they have an RMSE of 60.7 for both.  
 
-
-```{r, echo=FALSE, include=FALSE, "LASSO"}
+```{r, echo=FALSE, include=FALSE, "LASSO", cache=TRUE}
 
 #################################
 #           LASSO               #
@@ -450,6 +453,8 @@ tab_rmse <- data.frame(
 pander(tab_rmse)
 ```
 
+# CART
+
 Another interesting model to look at is a decision tree built by a CART model. This will help predict the price of the apartment based on a few decisions along the way. Unfortunately the RMSE of this model is only 73.9 so it is outperformed by both LM5 and LASSO, but it is helpful to see a different way of deciding.
 
 ```{r, include=FALSE, echo=FALSE, "CART", cache=TRUE}
@@ -464,7 +469,7 @@ model7 <- formula(formula(paste0(yvar,modellev7)))
 model8 <- formula(formula(paste0(yvar,modellev8)))
 
 cart4 <- train(
-  model8, data=data_train, method = "rpart2",
+  model7, data=data_train, method = "rpart2",
   trControl = trainControl(method="none"),
   tuneGrid= data.frame(maxdepth = 5),
   na.action = na.pass)
@@ -472,11 +477,35 @@ cart4 <- train(
 pred_cart4 <- predict(cart4, data_test, na.action = na.pass)
 rmse_cart4 <- sqrt(mean((pred_cart4 - data_test$price)^2))
 ```
-```{r, echo=FALSE, "Decision tree graph", cache=TRUE}
+```{r, echo=FALSE, "Decision tree graph"}
 rpart.plot(cart4$finalModel, tweak=1.2, digits=-1, extra=1)
 ```
 
 Through both the linear models, LASSO as well as CART, the most important factors influencing price have been discovered.  
+
+# Important variables
+
+```{r, echo=FALSE, "variable importance"}
+cart4_var_imp <- varImp(cart4)$importance
+cart4_var_imp_df <- data.frame(varname = rownames(cart4_var_imp),imp = cart4_var_imp$Overall) %>%
+  mutate(varname = gsub("cond_", "Condition:", varname) ) %>%
+  arrange(desc(imp)) %>%
+  mutate(imp_percentage = imp/sum(imp))
+
+cart4_var_imp_plot <- cart4_var_imp_df %>% 
+  filter(imp_percentage > 0) %>% 
+  ggplot(aes(x=reorder(varname, imp), y=(imp_percentage))) +
+  geom_point(color=color[1], size=2) +
+  geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color=color[1], size=1.5) +
+  ylab("Importance") +
+  xlab("Variable Name") +
+  coord_flip() +
+  scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
+  theme_bg()+
+  labs(title = "Variable importance from the CART model")
+
+cart4_var_imp_plot
+```
 
 Some of the most influential are as expected:  
   + Number of bedrooms  
@@ -490,7 +519,9 @@ Some interesting factors that seem to be important are:
 Some factors that were expected to be important, but turned to be insignificant are:  
   + If pets are allowed in the space  
   + If the apartment has a balcony  
-  + Availability of a hairdryer 
+  + Availability of a safe
+  
+# Random Forest
 
 To make a last attempt at optimizing the price for the apartment, two Random Forest (RF) has been run on the data. The first one considered only 35 variables and the second all 65 without interactions.
 ```{r, echo=FALSE, include=FALSE, "Random Forest", cache=TRUE}
@@ -551,6 +582,8 @@ pander(rf_model_2[["results"]], caption = "Random Forest with 65 variables")
 
 These models gave some good results in term RMSE. Since they include many variables to choose from and combining multiple generated models, it gets closer to a true prediction. However, since these are more complex models that are harder to explain. Surprisingly LASSO seems to still be just as good model as the two RF models based on RMSE.
 
+# Predictions
+
 ```{r, echo=FALSE, include=FALSE, "Predictions"}
 ###################################################
 # FIGURES FOR FITTED VS ACTUAL OUTCOME VARIABLES #
@@ -592,7 +625,7 @@ level_vs_pred <- ggplot(data = d) +
   coord_cartesian(xlim = c(0, 350), ylim = c(0, 350)) +
   scale_x_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
   scale_y_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
-  labs(y = "Price (US dollars)", x = "Predicted price  (US dollars)") +
+  labs(y = "Price (Euros)", x = "Predicted price  (Euros)") +
   theme_bg() 
 level_vs_pred
 
@@ -614,6 +647,12 @@ predictionlev_holdout_summary <-
   dplyr::summarise(fit = mean(fit, na.rm=TRUE), pred_lwr = mean(pred_lwr, na.rm=TRUE), pred_upr = mean(pred_upr, na.rm=TRUE),
                    conf_lwr = mean(conf_lwr, na.rm=TRUE), conf_upr = mean(conf_upr, na.rm=TRUE))
 ```
+```{r, echo=FALSE, "predicted vs actual y values"}
+level_vs_pred
+```
+
+Looking at the comparison of y variables, it can be seen that the predicted variables not distributed nicely around the 45 degree line. This is because of the low R squared of the model. The model run on the train dataset only covered about 30 percent of the variables. Therefore, we cannot expect it to give perfect results.
+
 ```{r, echo=FALSE, "Prediction table"}
 panderOptions("table.split.table", Inf)
 pander(x = predictionlev_holdout_summary,  digits = 3, row.names = FALSE,
@@ -635,5 +674,9 @@ F14_CI_n_accomodate
 ```
 
 Overall in terms of price it is better to price the apartment to be advertised as being able to sleep 6 people, since those are more expensive. That way it could achieve a price of aproximately 143 Euros. If it is priced as for only 2 people it would be only 73 Euros. The jump between sleeps 5 and sleeps 6 is almost 30 Euros, so it makes sense to price it with that strategy. That would mean that with an 80% Prediction Interval (PI) the price would be between 64 and 222 Euros, since there is much uncertainly on this market even with a good model.  
+
+# Choices made and comparison to London
+
+With respect to the choices made with variable selection, most were decided based on domain knowledge. The author has previous education in the hospitality industry and could therefore make an educated guess about the importance of some amenities compared to others. This was especially the case with the around 300 dummies, which were narrowed down by hand. Further, the decision was made to run both linear and machine learning models to get the best overview possible. One of the main factors considered was also parking, since in Florence that is a scarce resource and can therefore be an important factor on the price. Another important decision was using log transformations for any of the variables. While many were tested, this was not used due to the interpretation of the models and the desired outcome being predictions. The variables in this analysis are all better interpreted as level than as log where they would represent a percentage change. This is especially true with price since the price for a new property needs to be predicted. The decision to pool some variables was also a concious one to allow the retaining of more ocservations. Since there is no additional value of more than 2 bathrooms for example, this category has been narrowed down for ease of use during the analysis. Lastly, the choice was made to do the predictions on the linear model, even though LASSO outperforms it, due to the ease of using linear models for prediction and the easy explanation of the results.
  
 Comparing the AirBnb market in Florence to a different study conducted in London, it can be seen that the London market is much more prdictable. The models created for that market had a much higher R squared (closer to 0.50 almost 0.60) compared to the r squared achived here in Florence (around 0.20 almost reaching 0.30). This same phenomenin can also be observed in the RMSE and BIC values, which are significantly lower in London than anything achieved in Florence. This could be due to the homogony of the dataset in London since it was only looking at one burough which may be more similar to each other than in the whole city of Florence. 

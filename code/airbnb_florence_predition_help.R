@@ -504,7 +504,7 @@ predictionlev_holdout
 
 ## Try for LASSO
 
-predictionlev_holdout_pred <- as.data.frame(predict(, newdata = data_holdout, interval="predict")) %>%
+predictionlev_holdout_pred <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="predict")) %>%
   rename(pred_lwr = lwr, pred_upr = upr)
 predictionlev_holdout_conf <- as.data.frame(predict(model5_level, newdata = data_holdout, interval="confidence")) %>%
   rename(conf_lwr = lwr, conf_upr = upr)
@@ -529,7 +529,7 @@ level_vs_pred <- ggplot(data = d) +
   coord_cartesian(xlim = c(0, 350), ylim = c(0, 350)) +
   scale_x_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
   scale_y_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
-  labs(y = "Price (US dollars)", x = "Predicted price  (US dollars)") +
+  labs(y = "Price (Euros)", x = "Predicted price  (Euros)") +
   theme_bg() 
 level_vs_pred
 
